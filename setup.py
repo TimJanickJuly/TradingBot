@@ -4,12 +4,25 @@ import datetime
 #!pip install pytrends
 from pytrends.request import TrendReq
 from pytrends.exceptions import ResponseError
+#!pip install pandas_ta as ta
+import pandas_ta as ta
 
+import yfinance as yf
+import pandas as pd
+import datetime
+!pip install pytrends
+from pytrends.request import TrendReq
+from pytrends.exceptions import ResponseError
+import time
+!pip install pandas_ta
+import pandas_ta as ta
 
+from stock_information import dax_symbols, us_symbols, eu_symbols, company_names, dax_business_fields, us_business_fields, eu_business_fields, indice_symbols, company_country_codes
 
 
 def download_stock_data(symbol, start_date, end_date):
     try:
+        print(start_date)
         # Daten von Yahoo Finance herunterladen
         data = yf.download(symbol, start=start_date, end=end_date)
         return data
@@ -25,7 +38,7 @@ def save_to_csv(data, filename):
     except Exception as e:
         print("Fehler beim Speichern der Daten:", e)
 
-def fill_missing_dates(df):
+def fill_missing_dates(df, start_date, end_date):
     copy_df = df.copy()
     desired_index = pd.date_range(start_date, end_date)
     df = copy_df.reindex(desired_index)
@@ -34,7 +47,6 @@ def fill_missing_dates(df):
     df = df.fillna(0)
     return df
 
-import time
 
 def get_google_trends(keyword, start_date, end_date, geo=''):
     try:
@@ -87,86 +99,92 @@ def combine_indices_data(indices, start_date, end_date):
     for indice in indices:
         data = download_stock_data(indice, start_date, end_date)
         if data is not None:
-            data = fill_missing_dates(data)
+            data = fill_missing_dates(data, start_date, end_date)
             indices_data[indice] = data.rename(columns={col: col + '_' + indice for col in data.columns})
 
     # Combine the indices into a DataFrame
     indices_df = pd.concat(indices_data.values(), axis=1)
     return indices_df
 
+def compute_techincal_indicators(df):
+  data = df.copy()
+  data.ta.sma(length=20, append=True)  # Simple Moving Average (SMA) mit einer Periode von 20
+  data.ta.sma(length=50, append=True, slow=True)  # Langsamerer Simple Moving Average (SMA) mit einer Periode von 50
+  data.ta.ema(length=50, append=True, slow=True)  # Langsamerer Exponential Moving Average (EMA) mit einer Periode von 50
+  data.ta.ema(length=20, append=True)  # Exponential Moving Average (EMA) mit einer Periode von 20
+  data.ta.rsi(length=14, append=True)  # Relative Strength Index (RSI) mit einer Periode von 14
+  data.ta.bbands(length=20, append=True)  # Bollinger Bands mit einer Periode von 20
+  data.ta.macd(append=True)  # Moving Average Convergence Divergence (MACD)
+  data.ta.stoch(append=True)  # Stochastic Oscillator
+  data.ta.atr(length=14, append=True)  # Average True Range (ATR)
+  data.ta.obv(append=True)  # On-Balance Volume (OBV)
+  data.ta.adx(length=14, append=True)  # Average Directional Index (ADX)
+  return data
 
 
 
-from stock_data import dax_symbols, us_symbols, eu_symbols, company_names, dax_business_fields, us_business_fields, eu_business_fields, indice_symbols, company_country_codes
-
-base_path = "/content/sample_data/stock_data_test2/"
-
-start_date = datetime.datetime(2020, 1, 2)
-end_date = datetime.datetime(2020, 2, 5)
 
 
+base_path = "/content/sample_data/"
 
-symbol_lists = [dax_symbols, us_symbols, eu_symbols]
+start_date = datetime.datetime(2019, 1, 2)
+end_date = datetime.datetime(2020, 1, 2)
 
+start_date_adj_for_ta = start_date - pd.Timedelta(days=50)
 
-for symbol_list in symbol_lists:
-    for symbol in symbol_list:
+stock_lists = [dax_symbols, us_symbols, eu_symbols]
+
+#download data for eahc stock
+for stock_list in stock_lists:
+    for stock in stock_list:
         print("#############################################################################################")
         print("#############################################################################################\n")
         
-        print("Verarbeite Symbol:", symbol)
+        print("Verarbeite Symbol:", stock)
 
-        
-        data = download_stock_data(symbol, start_date, end_date)
+        #downloaded startdate has to start to start before specidied start date because the slowest technical indicator takes 50 previous rows. These rows are droped again after ta computation
+        data = download_stock_data(stock, start_date_adj_for_ta, end_date) 
         if data is not None:
+
+            #preprocessing
             df = pd.DataFrame(data)
-            df = df.drop(['Adj Close', 'Open'], axis=1)
-            df = fill_missing_dates(df)
+            df = fill_missing_dates(df, start_date_adj_for_ta, end_date)
+
+            #technical indicators
+            df = compute_techincal_indicators(df)
+            df = df.drop(df.index[:50]) # first 50 rows are just downloaded for technical indicators an can be droped afterwards
 
             
-            if symbol in dax_symbols:
-                geo = 'DE'
-            elif symbol in us_symbols:
-                geo = 'US'
-            else:
-                geo = company_country_codes[symbol]
-            df = merge_with_google_trends(df, symbol, start_date, end_date, geo, 'trends_lokal')
+            #google trends
+            geo = company_country_codes[stock]
+            df = merge_with_google_trends(df, stock, start_date, end_date, geo, 'trends_lokal')
             geo = ''
-            df = merge_with_google_trends(df, symbol, start_date, end_date, geo, 'trends_global')
+            df = merge_with_google_trends(df, stock, start_date, end_date, geo, 'trends_global')
 
             
-            path = base_path + symbol + ".csv"
+            path = base_path + stock + ".csv"
             save_to_csv(df, path)
         else:
-            print("\nFehler beim Herunterladen der Daten für", symbol)
+            print("\nFehler beim Herunterladen der Daten für", stock)
 
+#download data to stock indices and save them in a seperate csv file
 indice_df = combine_indices_data(indice_symbols, start_date, end_date)
-
 if indice_df is not None:
   save_to_csv(indice_df, base_path + 'indices.csv')
 
 
+#save data of each stocks buisnessfield and orgin country in csv
 all_labels = set(dax_business_fields.values()).union(set(us_business_fields.values()), set(eu_business_fields.values()))
-
-# Sort the labels alphabetically
 alphabetical_labels = sorted(all_labels)
-
-# Output the alphabet and its length
 print("Alphabet:", alphabetical_labels)
 print("Length of Alphabet:", len(alphabetical_labels))
-
 dax_df = pd.DataFrame(list(dax_business_fields.items()), columns=['Symbol', 'Industry'])
 dax_df['Region'] = 'DE'
-
 us_df = pd.DataFrame(list(us_business_fields.items()), columns=['Symbol', 'Industry'])
 us_df['Region'] = 'US'
-
 eu_df = pd.DataFrame(list(eu_business_fields.items()), columns=['Symbol', 'Industry'])
 eu_df['Region'] = 'EU'
-
-# Concatenate all DataFrames
 combined_df = pd.concat([dax_df, us_df, eu_df])
-
 for index, row in combined_df.iterrows():
     if row['Region'] == 'EU':
         combined_df.at[index, 'Region'] = company_country_codes[row['Symbol']]
