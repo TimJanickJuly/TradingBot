@@ -4,20 +4,11 @@ import datetime
 #!pip install pytrends
 from pytrends.request import TrendReq
 from pytrends.exceptions import ResponseError
-#!pip install pandas_ta as ta
-import pandas_ta as ta
-
-import yfinance as yf
-import pandas as pd
-import datetime
-!pip install pytrends
-from pytrends.request import TrendReq
-from pytrends.exceptions import ResponseError
 import time
-!pip install pandas_ta
+#!pip install pandas_ta
 import pandas_ta as ta
 
-from stock_information import dax_symbols, us_symbols, eu_symbols, company_names, dax_business_fields, us_business_fields, eu_business_fields, indice_symbols, company_country_codes
+#from stock_information import dax_symbols, us_symbols, eu_symbols, company_names, dax_business_fields, us_business_fields, eu_business_fields, indice_symbols, company_country_codes
 
 
 def download_stock_data(symbol, start_date, end_date):
@@ -125,10 +116,10 @@ def compute_techincal_indicators(df):
 
 
 
-base_path = "/content/sample_data/"
+base_path = "/content/drive/MyDrive/data/stock_data/"
 
-start_date = datetime.datetime(2019, 1, 2)
-end_date = datetime.datetime(2020, 1, 2)
+start_date = datetime.datetime(2010, 1, 2)
+end_date = datetime.datetime(2024, 4, 30)
 
 start_date_adj_for_ta = start_date - pd.Timedelta(days=50)
 
@@ -152,16 +143,16 @@ for stock_list in stock_lists:
 
             #technical indicators
             df = compute_techincal_indicators(df)
-            df = df.drop(df.index[:50]) # first 50 rows are just downloaded for technical indicators an can be droped afterwards
-
+            
             
             #google trends
             geo = company_country_codes[stock]
-            df = merge_with_google_trends(df, stock, start_date, end_date, geo, 'trends_lokal')
+            df = merge_with_google_trends(df, stock, start_date_adj_for_ta, end_date, geo, 'trends_lokal')
             geo = ''
-            df = merge_with_google_trends(df, stock, start_date, end_date, geo, 'trends_global')
+            df = merge_with_google_trends(df, stock, start_date_adj_for_ta, end_date, geo, 'trends_global')
 
-            
+            # first 50 rows are just downloaded for technical indicators an can be droped afterwards
+            df = df.drop(df.index[:50])
             path = base_path + stock + ".csv"
             save_to_csv(df, path)
         else:
